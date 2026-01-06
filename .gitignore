@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Installed packages directories (common patterns)
+lib/
+Lib/
+site-packages/
+
+# macOS
+.DS_Store
+
+# Packages installed into project root by --target
+AppKit/
+Cocoa/
+CoreFoundation/
+Foundation/
+PIL/
+PyObjCTools/
+Quartz/
+bin/
+cv2/
+mouseinfo/
+numpy/
+pyautogui/
+pygetwindow/
+pymsgbox/
+pyobjc_core-12.1.dist-info/
+pyobjc_framework_cocoa-12.1.dist-info/
+pyobjc_framework_quartz-12.1.dist-info/
+mouseinfo-0.1.3.dist-info/
+numpy-2.2.6.dist-info/
+opencv_python-4.12.0.88.dist-info/
+pillow-12.1.0.dist-info/
+pyautogui-0.9.54.dist-info/
+pygetwindow-0.0.9.dist-info/
+pymsgbox-2.0.1.dist-info/
+pyperclip/
+pyperclip-1.11.0.dist-info/
+pyrect/
+pyrect-0.2.0.dist-info/
+pyscreeze/
+pyscreeze-1.0.1.dist-info/
+pytweening/
+pytweening-1.2.0.dist-info/
+rubicon/
+rubicon_objc-0.5.3.dist-info/
+opencv_python-4.12.0.88.dist-info/
+
+output/
