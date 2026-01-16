@@ -56,12 +56,11 @@ def find_kindle_window():
     """
     Kindleウィンドウを検索して情報を返す (Quartz使用)
     Returns:
-        dict: {'id': kCGWindowNumber, 'bounds': kCGWindowBounds, 'owner': ...} or None
+        list: candidates list of dicts
     """
     options = Quartz.kCGWindowListOptionOnScreenOnly | Quartz.kCGWindowListExcludeDesktopElements
     windowList = Quartz.CGWindowListCopyWindowInfo(options, Quartz.kCGNullWindowID)
     
-    # 候補リスト (メインウィンドウっぽいやつを探す)
     candidates = []
     
     for win in windowList:
@@ -69,20 +68,16 @@ def find_kindle_window():
         name = win.get('kCGWindowName', '') or ''
         
         if 'Kindle' in owner:
-            # ウィンドウサイズが小さすぎるものは除外 (ツールチップや不可視ウィンドウ)
             bounds = win.get('kCGWindowBounds')
             width = bounds.get('Width', 0)
             height = bounds.get('Height', 0)
             
-            if width > 200 and height > 200:
+            # ウィンドウサイズが小さすぎるものは除外 (通常はメインウィンドウを狙う)
+            if width > 300 and height > 300:
                 candidates.append(win)
+                print(f"Candidate found: {owner} - {name} (ID: {win.get('kCGWindowNumber')}, Size: {width}x{height})")
                 
-    if not candidates:
-        return None
-        
-    # 一番手前(レイヤーが上)のウィンドウ、もしくは一番大きいウィンドウを採用
-    # 通常はリストの最初の方が手前
-    return candidates[0]
+    return candidates
 
 def activate_kindle():
     """Kindleアプリをアクティブにする"""
@@ -96,11 +91,8 @@ def activate_kindle():
 
 def capture_window_image(window_id):
     """
-    指定されたWindowIDの内容をキャプチャする (他のウィンドウが重なっていても無視される)
-    Returns:
-        numpy array (BGR format for OpenCV)
+    指定されたWindowIDの内容をキャプチャする
     """
-    # kCGWindowListOptionIncludingWindow: 指定したウィンドウIDを含む (そのウィンドウ自身のみ撮る)
     image_ref = Quartz.CGWindowListCreateImage(
         Quartz.CGRectNull,
         Quartz.kCGWindowListOptionIncludingWindow,
@@ -113,36 +105,27 @@ def capture_window_image(window_id):
 
     width = Quartz.CGImageGetWidth(image_ref)
     height = Quartz.CGImageGetHeight(image_ref)
+    bytes_per_row = Quartz.CGImageGetBytesPerRow(image_ref)
     
     # ピクセルデータを取得
-    elapsed_time = 0
     provider = Quartz.CGImageGetDataProvider(image_ref)
     data = Quartz.CGDataProviderCopyData(provider)
     
-    # numpy配列に変換 (BGRA format usually)
-    # Note: CGImage usually returns BGRA or RGBA. converting to a buffer.
-    # Buffer is byte array.
-    
-    # Create numpy array from buffer
-    # Note: This handles standard 32-bit images
-    # Check bits per pixel if necessary, but usually standard on mac
-    
+    # numpy配列に変換
     img_data = np.frombuffer(data, dtype=np.uint8)
     
-    # Reshape (Height, Width, 4 bytes)
+    # bytes_per_row を考慮して reshape
+    # Row padding がある場合、単純に (height, width, 4) には reshape できないため
     try:
-        img_data = img_data.reshape((height, width, 4))
+        # まず (height, bytes_per_row) にして、有効な部分 (width * 4) だけを抽出
+        img_data = img_data.reshape((height, bytes_per_row))
+        img_data = img_data[:, :width * 4].reshape((height, width, 4))
     except ValueError:
-        # 解像度やフォーマットが違う場合のフォールバック (稀)
+        # 解像度やフォーマットが違う場合のフォールバック
         return None
 
-    # アルファチャンネルを除去してRGB/BGRにする
-    # Mac Quartz often gives BGRA. OpenCV uses BGR.
-    # So we want first 3 channels if it is BGR. 
-    # Let's inspect channel order or just assume BGRA for now and convert to BGR.
-    # Usually capture is BGRA.
-    
-    img_bgr = img_data[:, :, :3]
+    # 通常 BGRA なので BGR (OpenCV) に変換
+    img_bgr = cv2.cvtColor(img_data, cv2.COLOR_BGRA2BGR)
     return img_bgr
 
 def find_content_boundaries(img):
@@ -227,8 +210,8 @@ def capture_and_save_pages(window_info, title, base_dir):
     # 初期画像取得
     img = capture_window_image(window_id)
     if img is None:
-        print("Failed to capture initial image.")
-        return 0
+        print(f"Failed to capture image for Window ID: {window_id}")
+        return None
         
     lft, rht = find_content_boundaries(img)
     
@@ -291,32 +274,41 @@ def main():
     root_dir = os.getcwd()
     
     # Kindleを探す
-    win_info = find_kindle_window()
-    if not win_info:
-        messagebox.showerror("エラー", "Kindle For Macのウィンドウが見つかりません。")
+    candidates = find_kindle_window()
+    if not candidates:
+        messagebox.showerror("エラー", "Kindle For Macのウィンドウが見つかりません。本体が起動しているか確認してください。")
         return
         
-    # アクティブ化コードを削除 (バックグラウンド処理のため)
-    # if not activate_kindle():
-    #     messagebox.showwarning("警告", "Kindleのアクティブ化に失敗しました。手動で前面にしてください。")
-    
-    # タイトル入力 (省略時は日付)
     # タイトル設定 (形式: output/HASH)
     import secrets
     random_hash = secrets.token_hex(2) # 4 digits
     title = f"output/{random_hash}"
-    
     save_folder = osp.join(root_dir, title)
     
-    print(f"Target Window ID: {win_info.get('kCGWindowNumber')}")
     print(f"Title: {title}")
     
     # 実行前に少し待つ
     time.sleep(1)
     
-    total = capture_and_save_pages(win_info, title, root_dir)
-    
-    messagebox.showinfo("完了", f"完了しました。\n合計: {total} ページ\n保存先: {save_folder}")
+    success = False
+    for win_info in candidates:
+        print(f"\n--- Testing Window ID: {win_info.get('kCGWindowNumber')} ---")
+        total = capture_and_save_pages(win_info, title, root_dir)
+        
+        if total is not None and total > 0:
+            messagebox.showinfo("完了", f"完了しました。\n合計: {total} ページ\n保存先: {save_folder}")
+            success = True
+            break
+        else:
+            print(f"Window {win_info.get('kCGWindowNumber')} failed or has no pages.")
+
+    if not success:
+        print("\n[!] すべての候補ウィンドウで失敗しました。")
+        print("以下の点を確認してください:")
+        print("1. システム設定 > プライバシーとセキュリティ > 画面収録 で、使用しているターミナル（Terminal, iTerm2, VS Code等）に権限が与えられているか。")
+        print("2. Kindleウィンドウが最小化されていないか。")
+        print("3. Kindleで本が開かれているか。")
+        messagebox.showerror("エラー", "キャプチャに失敗しました。画面収録の権限設定などを確認してください。")
 
 if __name__ == "__main__":
     main()
