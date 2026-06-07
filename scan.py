@@ -9,7 +9,8 @@ if script_dir in sys.path:
     sys.path.remove(script_dir)
 
 # 仮想環境のパスを明示的に追加
-venv_site = os.path.join(script_dir, '.venv', 'lib', 'python3.13', 'site-packages')
+py_version = f"python{sys.version_info.major}.{sys.version_info.minor}"
+venv_site = os.path.join(script_dir, '.venv', 'lib', py_version, 'site-packages')
 if os.path.isdir(venv_site) and venv_site not in sys.path:
     sys.path.insert(0, venv_site)
 
